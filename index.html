@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>I Love You — Dual Canvas</title>
+  <meta name="description" content="粉色文字雨 + 爱心粒子 双层动画合并版" />
+  <style>
+    :root {
+      --bg: #000;
+      --accent: #f584b7; /* 粉色 */
+      --message-font: "STKaiti", "KaiTi", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans SC", sans-serif;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      overflow: hidden;
+    }
+    .stage {
+      position: fixed;
+      inset: 0;
+    }
+    canvas.stage {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    #matrix { z-index: 0; }
+    #heart  { z-index: 1; }
+
+    /* 中心文字 */
+    #message {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      z-index: 2;
+      pointer-events: none;
+      text-align: center;
+      padding: 24px;
+    }
+    #message h1, #message h4 { margin: 0; color: var(--accent); }
+    #message h1 { font-family: var(--message-font); font-size: clamp(28px, 6vw, 64px); font-weight: 700; letter-spacing: 0.04em; }
+    #message h4 { font-family: var(--message-font); font-size: clamp(18px, 3.5vw, 36px); font-weight: 500; opacity: 0.95; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <!-- 背景：粉色文字雨（I LOVE U） -->
+  <canvas id="matrix" class="stage" aria-label="pink matrix rain"></canvas>
+  <!-- 前景：爱心粒子 -->
+  <canvas id="heart"  class="stage" aria-label="heart particles"></canvas>
+  <!-- 顶层：文字 -->
+  <div id="message">
+    <div>
+      <h1>💗 谦谦生日快乐</h1>
+      <h4>永远十八</h4>
+    </div>
+  </div>
+
+  <script>
+  // ============ 工具：高分屏适配 ============
+  function fitCanvasToCSSPixels(canvas) {
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const { width, height } = canvas.getBoundingClientRect();
+    const needResize = canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr);
+    if (needResize) {
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // 将绘图单位恢复到 CSS 像素
+    }
+    return needResize;
+  }
+
+  // ============ 背景：粉色文字雨 ============
+  (function initMatrixRain() {
+    const canvas = document.getElementById('matrix');
+    const ctx = canvas.getContext('2d');
+
+    let fontSize = 16;
+    let columns = 0;
+    let drops = [];
+    const glyphs = 'I LOVE U'.split('');
+
+    function reset() {
+      fitCanvasToCSSPixels(canvas);
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      columns = Math.ceil(w / fontSize);
+      drops = new Array(columns).fill(1);
+      // 半透明铺一层，清屏更柔和
+      ctx.fillStyle = 'rgba(0,0,0,1)';
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    function draw() {
+      // 渐隐背景形成拖影
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+      ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#f584b7';
+      ctx.font = fontSize + 'px Arial, Helvetica, sans-serif';
+
+      for (let i = 0; i < drops.length; i++) {
+        const text = glyphs[Math.floor(Math.random() * glyphs.length)];
+        const x = i * fontSize;
+        const y = drops[i] * fontSize;
+        ctx.fillText(text, x, y);
+
+        if (y > canvas.clientHeight || Math.random() > 0.965) drops[i] = 0;
+        drops[i]++;
+      }
+      requestAnimationFrame(draw);
+    }
+
+    // 监听尺寸变化
+    const ro = new ResizeObserver(() => reset());
+    ro.observe(canvas);
+    reset();
+    requestAnimationFrame(draw);
+  })();
+
+  // ============ 前景：爱心粒子 ============
+  (function initHeartParticles() {
+    const canvas = document.getElementById('heart');
+    const ctx = canvas.getContext('2d');
+
+    const settings = {
+      particles: {
+        length: 500,     // 粒子数量
+        duration: 2,     // 存活秒数
+        velocity: 50,   // 初速度（px/s）
+        effect: -0.75,   // 加速度系数（负数回拉）
+        size: 30         // 粒子贴图尺寸
+      }
+    };
+
+    class Point {
+      constructor(x = 0, y = 0) { this.x = x; this.y = y; }
+      clone() { return new Point(this.x, this.y); }
+      length(len) { if (len === undefined) return Math.hypot(this.x, this.y); this.normalize(); this.x *= len; this.y *= len; return this; }
+      normalize() { const L = this.length(); if (L !== 0) { this.x /= L; this.y /= L; } return this; }
+    }
+
+    class Particle {
+      constructor() { this.position = new Point(); this.velocity = new Point(); this.acceleration = new Point(); this.age = 0; }
+      init(x, y, dx, dy) { this.position.x = x; this.position.y = y; this.velocity.x = dx; this.velocity.y = dy; this.acceleration.x = dx * settings.particles.effect; this.acceleration.y = dy * settings.particles.effect; this.age = 0; }
+      update(dt) { this.position.x += this.velocity.x * dt; this.position.y += this.velocity.y * dt; this.velocity.x += this.acceleration.x * dt; this.velocity.y += this.acceleration.y * dt; this.age += dt; }
+      draw(context, image) {
+        const t = Math.min(1, this.age / settings.particles.duration);
+        const ease = (x) => (--x) * x * x + 1;
+        const size = image.width * ease(t);
+        context.globalAlpha = 1 - t;
+        context.drawImage(image, this.position.x - size / 2, this.position.y - size / 2, size, size);
+        context.globalAlpha = 1;
+      }
+    }
+
+    class ParticlePool {
+      constructor(n) { this.particles = new Array(n).fill(null).map(() => new Particle()); this.firstActive = 0; this.firstFree = 0; this.duration = settings.particles.duration; }
+      add(x, y, dx, dy) {
+        const p = this.particles[this.firstFree];
+        p.init(x, y, dx, dy);
+        this.firstFree = (this.firstFree + 1) % this.particles.length;
+        if (this.firstActive === this.firstFree) this.firstActive = (this.firstActive + 1) % this.particles.length;
+      }
+      update(dt) {
+        const { particles, duration } = this;
+        if (this.firstActive < this.firstFree) {
+          for (let i = this.firstActive; i < this.firstFree; i++) particles[i].update(dt);
+        } else {
+          for (let i = this.firstActive; i < particles.length; i++) particles[i].update(dt);
+          for (let i = 0; i < this.firstFree; i++) particles[i].update(dt);
+        }
+        while (this.firstActive !== this.firstFree && this.particles[this.firstActive].age >= duration) {
+          this.firstActive = (this.firstActive + 1) % particles.length;
+        }
+      }
+      draw(context, image) {
+        const { particles } = this;
+        if (this.firstActive < this.firstFree) {
+          for (let i = this.firstActive; i < this.firstFree; i++) particles[i].draw(context, image);
+        } else {
+          for (let i = this.firstActive; i < particles.length; i++) particles[i].draw(context, image);
+          for (let i = 0; i < this.firstFree; i++) particles[i].draw(context, image);
+        }
+      }
+    }
+
+    function pointOnHeart(t) {
+      return new Point(
+        160 * Math.pow(Math.sin(t), 3),
+        130 * Math.cos(t) - 50 * Math.cos(2 * t) - 20 * Math.cos(3 * t) - 10 * Math.cos(4 * t) + 25
+      );
+    }
+
+    // 生成心形路径贴图
+    function createHeartImage(size) {
+      const can = document.createElement('canvas');
+      can.width = size; can.height = size;
+      const c = can.getContext('2d');
+      c.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ea80b0';
+      c.beginPath();
+      let t = -Math.PI;
+      function to(tt) {
+        const p = pointOnHeart(tt);
+        return new Point(size / 2 + p.x * size / 350, size / 2 - p.y * size / 350);
+      }
+      let p = to(t);
+      c.moveTo(p.x, p.y);
+      while (t < Math.PI) { t += 0.01; p = to(t); c.lineTo(p.x, p.y); }
+      c.closePath();
+      c.fill();
+      const img = new Image();
+      img.src = can.toDataURL();
+      return img;
+    }
+
+    const pool = new ParticlePool(settings.particles.length);
+    const heartImage = createHeartImage(settings.particles.size);
+
+    let last = 0;
+    function render(ts) {
+      const now = ts / 1000;
+      const dt = Math.min(0.033, last ? now - last : 0.016);
+      last = now;
+
+      // 尺寸与 DPR 自适应
+      const resized = fitCanvasToCSSPixels(canvas);
+      if (resized) ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+      else ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+
+      // 新粒子
+      const rate = settings.particles.length / settings.particles.duration; // 粒子/秒
+      const amount = rate * dt;
+      for (let i = 0; i < amount; i++) {
+        const pos = pointOnHeart(Math.PI - 2 * Math.PI * Math.random());
+        const dir = pos.clone().length(settings.particles.velocity);
+        pool.add(canvas.clientWidth / 2 + pos.x, canvas.clientHeight / 2 - pos.y, dir.x, -dir.y);
+      }
+
+      pool.update(dt);
+      pool.draw(ctx, heartImage);
+      requestAnimationFrame(render);
+    }
+
+    // 监听尺寸
+    const ro = new ResizeObserver(() => fitCanvasToCSSPixels(canvas));
+    ro.observe(canvas);
+    fitCanvasToCSSPixels(canvas);
+    requestAnimationFrame(render);
+  })();
+  </script>
+</body>
+</html>
